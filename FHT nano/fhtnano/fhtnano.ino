@@ -1,103 +1,42 @@
-/* fht_log_fast
- * 
- * By: Andrew Tuline
- *
- * Date: Mar, 2019
- * 
- *
- * Why use a 7 band MSGEQ7 graphic equalizer chip when you can get many times more frequency bins with software alone and on an Arduino UNO to boot?
- * 
- * This example combines high speed A/D conversion, FHT (Fast Hartley Transform) pitch detection combined with simple FastLED library display using
- * an Arduino Nano, an ADMP401 MEMS microphone and a strip of APA102 led's.
- *
- *
- * The advantage of using MSGEQ7 chips is that the coding is relatively simple. The disadvantage is that:
- * 
- *  - you need extra hardware.
- *  - you get a measly 7 frequency bins.
- *  - the results can often be jittery.
- * 
- * By using the Open Music Labs FHT (Fast Hartley Transform) library in conjunction with high speed A/D conversion, you can perform pitch detection on an 
- * Arduino UNO with much more capability than an MSGEQ7 chip. Oh, and that library gives you about a 5 millisecond conversion, and combined with FastLED
- * you can get on the order of 125 frames per second. That's no slouch for an 8 bit 16MHz microcontroller.
- * 
- * The FHT library is available at http://wiki.openmusiclabs.com/wiki/ArduinoFHT
- *
- * The A/D conversion uses direct port manipulation and can run at 19KHz, 38KHz or even higher as opposed to 8KHz for a standard analogRead() conversion.
- * Furthermore, by disabling interrupts for a short period of time, you can reduce jitter during the sampling. This has a side effect of making 3 pin WS2812
- * displays less reliable and, as a result, we'll use 4 pin APA102 LED's instead. Reference:
- * 
- * https://github.com/FastLED/FastLED/wiki/Interrupt-problems
- *  
- *  
- * The microphone used for this routine is a Sparkfun ADMP401 MEMS microphone, which runs at 3.3V. With this microphone, we need to tie the AREF pin to 3.3V,
- * and in setup(), perform:
- * 
- * analogReference(EXTERNAL); 
- * 
- * or use the direct port equivalent, which is:
- * 
- * ADMUX |= (0 << REFS0);
- * 
- * 
- * Testing has been performed with a an Android based Function Generator by Keuwlsoft. With so many frequency bins to choose from, you can select the ranges you
- * want to work with and discard the rest.
+/* Fast Hartley Transform for responsive lighting
+ * Anthony Bennett
+ * With code from Andrew Tuline
  * 
  */
-
 
 #define qsubd(x, b) ((x>b)?b:0)                               // A digital unsigned subtraction macro. if result <0, then => 0. Otherwise, take on fixed value.
 #define qsuba(x, b) ((x>b)?x-b:0)                             // Unsigned subtraction macro. if result <0, then => 0.
 
 // FHT Definitions
 #define LOG_OUT 1                                             // Use logarithmic based bins (is required for the library to run).
+//#define LIN_OUT 1 //linear output
 #define FHT_N 256                                             // Set to 256 point fht. Any less, and the upper ranges won't work well.
 #define DC_OFFSET  0                                        // DC offset in mic signal. Should probably be about 512.
-#define MIC_PIN 5                                             // We're using A5.
+#define MIC_PIN 0                                             // We're using A0.
 
 #include <FHT.h>                                              // FHT library at http://wiki.openmusiclabs.com/wiki/ArduinoFHT
 
-//#include "FastLED.h"                                          // FastLED library at https://github.com/FastLED/FastLED
 
-//#if FASTLED_VERSION < 3001000
-//#error "Requires FastLED 3.1 or later; check github for latest code."
-//#endif
-
-// Fixed definitions cannot change on the fly.
-//#define LED_DT 12                                             // Data pin to connect to the strip.
-//#define LED_CK 11                                             // Clock pin for APA102 or WS2801
-//#define COLOR_ORDER BGR                                       // It's GRB for WS2812B
-//#define LED_TYPE APA102                                       // What kind of strip are you using (APA102, WS2801 or WS2812B)
-#define NUM_LEDS 40                                           // Number of LED's.
-
-
-// Initialize changeable global variables.
-uint8_t max_bright = 128;                                     // Overall brightness definition. It can be changed on the fly.
-
-//struct CRGB leds[NUM_LEDS];                                   // Initialize our LED array.
-
-
-
-
-void setup() {
-  
+void setup() {  
   Serial.begin(57600);                                        // Initialize serial port for debugging.
-  delay(1000);                                                // Soft startup to ease the flow of electrons.
-  pinMode(12, OUTPUT);
-  digitalWrite(12, HIGH);
-//  LEDS.addLeds<LED_TYPE, LED_DT, LED_CK, COLOR_ORDER>(leds, NUM_LEDS);  // Use this for WS2801 or APA102
-//  LEDS.addLeds<LED_TYPE, LED_DT, COLOR_ORDER>(leds, NUM_LEDS);  // Use this for WS2812
-
-//  FastLED.setBrightness(max_bright);
-//  set_max_power_in_volts_and_milliamps(5, 500);               // FastLED Power management set at 5V, 500mA.
+  delay(100);                                                // Soft startup to ease the flow of electrons.
+  
+  pinMode(12, OUTPUT); //Microphone Ground
+  pinMode(11, OUTPUT); //Microphone Power
+  digitalWrite(12, LOW);
+  digitalWrite(11, HIGH);
+  
+  pinMode(6, OUTPUT); // our digital pin7 is an output
+  pinMode(5, OUTPUT); // our digital pin7 is an output
+  pinMode(9, OUTPUT); // our digital pin7 is an output
 
 // Setup the ADC for polled 10 bit sampling on analog pin 5 at 19.2kHz.
   cli();                                  // Disable interrupts.
   ADCSRA = 0;                             // Clear this register.
   ADCSRB = 0;                             // Ditto.
   ADMUX = 0;                              // Ditto.
-  ADMUX |= (MIC_PIN & 0x07);              // Set A5 analog input pin.
-  ADMUX |= (0 << REFS0);                  // Set reference voltage  (analog reference(external), or using 3.3V microphone on 5V Arduino.
+  ADMUX |= (MIC_PIN & 0x07);              // Set A0 analog input pin.
+  ADMUX |= (1 << REFS0);                  // Set reference voltage  (analog reference(external), or using 3.3V microphone on 5V Arduino.
                                           // Set that to 1 if using 5V microphone or 3.3V Arduino.
 //  ADMUX |= (1 << ADLAR);                  // Left justify to get 8 bits of data.                                          
   ADMUX |= (0 << ADLAR);                  // Right justify to get full 10 A/D bits.
@@ -119,31 +58,25 @@ void setup() {
 
 
 void loop() {
-
 //  showfps();                                                  // Debug output of how many frames per second we're getting. Comment this out in production.
   getFHT();                                                   // Let's take FHT_N samples and crunch 'em.
   fhtDisplay();                                               // Let's calculate the LED display from our FHT output array.
-//  FastLED.show();                                             // And then display it.
-
 }  // loop()
 
 
 
 void getFHT() {
-  
   get_sound();                                                // High speed sound sampling.
   fht_window();                                               // Window the data for better frequency response.
   fht_reorder();                                              // Reorder the data before doing the fht.
   fht_run();                                                  // Process the data in the fht.
   fht_mag_log();                                              // I guess we'll be converting to logarithm.
-                                                              // Really, I don't know what these do to tell you the truth.
-  
+//  fht_mag_lin();                                            // Linear conversion if needed
 } // GetFHT()
 
 
 
 void get_sound() {                                            // Uses high speed polled analog sampling and NOT analogRead().
-
 // Here's the slow and jittery 8KHz method of sampling sound, which we no longer use.
 //  for (int i = 0 ; i < FHT_N ; i++) fht_input[i] = analogRead(inputPin) - DC_OFFSET;
   
@@ -159,34 +92,23 @@ void get_sound() {                                            // Uses high speed
 //      Serial.print(" ");
 //      Serial.print(512);                                      // Highest value
 //      Serial.println(" ");
-  
     }
     sei();
-    
 } // get_sound()
 
 
 
 void fhtDisplay() {
-
   #define hueinc 0                                            // A hue increment value to make it rotate a bit.
   #define micmult 10                                          // Bin values are very low, to let's crank 'em up.
   #define noiseval 32                                         // Increase this to reduce sensitivity.
-
+//  int N = sizeof fht_log_out;
   for (int i = 0; i < sizeof fht_log_out; i++) {
   Serial.print(fht_log_out[i]);
+//  Serial.print(fht_lin_out[i]);
   Serial.print(" ");
   }
   Serial.println("");
-  
-//  for (int i= 0; i < NUM_LEDS; i++) {                         // Run through the LED array.
-//    int tmp = qsuba(fht_log_out[2*i+2], noiseval);            // Get the sample and subtract the 'quiet' normalized values, but don't go < 0.
-//    Serial.println(tmp*micmult+hueinc);
-//    if (tmp > (leds[i].r + leds[i].g + leds[i].b))            // Refresh an LED only when the intensity is low. By Andrew Tuline.
-//        leds[i] = CHSV(tmp*micmult+hueinc, 255, tmp*micmult); // Note how we really cranked up the tmp value to get BRIGHT LED's. Also increment the hue for fun.
-//    leds[i].nscale8(224);                                     // Let's fade the whole thing over time as well.
-//  }
-
 } // fhtDisplay()
 
 
