@@ -16,6 +16,11 @@
 
 #include <FHT.h>                                              // FHT library at http://wiki.openmusiclabs.com/wiki/ArduinoFHT
 
+//set LED pins
+#define RED 3
+#define GRN 5
+#define BLU 6
+
 
 void setup() {  
   Serial.begin(57600);                                        // Initialize serial port for debugging.
@@ -24,19 +29,19 @@ void setup() {
   pinMode(12, OUTPUT); //Microphone Ground
   pinMode(11, OUTPUT); //Microphone Power
   digitalWrite(12, LOW);
-  digitalWrite(11, HIGH);
+  digitalWrite(11, HIGH); //Powering that shit without wires
   
-  pinMode(6, OUTPUT); // our digital pin7 is an output
-  pinMode(5, OUTPUT); // our digital pin7 is an output
-  pinMode(9, OUTPUT); // our digital pin7 is an output
+  pinMode(RED, OUTPUT); 
+  pinMode(GRN, OUTPUT); 
+  pinMode(BLU, OUTPUT); // our digital pins 2 3 4 are R G B respectively
 
-// Setup the ADC for polled 10 bit sampling on analog pin 5 at 19.2kHz.
+// Setup the ADC for polled 10 bit sampling on analog pin 0 at 19.2kHz.
   cli();                                  // Disable interrupts.
   ADCSRA = 0;                             // Clear this register.
   ADCSRB = 0;                             // Ditto.
   ADMUX = 0;                              // Ditto.
   ADMUX |= (MIC_PIN & 0x07);              // Set A0 analog input pin.
-  ADMUX |= (1 << REFS0);                  // Set reference voltage  (analog reference(external), or using 3.3V microphone on 5V Arduino.
+//  ADMUX |= (1 << REFS0);                  // Set reference voltage  (analog reference(external), or using 3.3V microphone on 5V Arduino.
                                           // Set that to 1 if using 5V microphone or 3.3V Arduino.
 //  ADMUX |= (1 << ADLAR);                  // Left justify to get 8 bits of data.                                          
   ADMUX |= (0 << ADLAR);                  // Right justify to get full 10 A/D bits.
@@ -52,6 +57,12 @@ void setup() {
   ADCSRA |= (1 << ADEN);                  // Enable ADC.
   ADCSRA |= (1 << ADSC);                  // Start ADC measurements.
   sei();                                  // Re-enable interrupts.
+
+  ADCSRA = 0xe5; // set the adc to free running mode
+  ADMUX = 0x40; // use adc0
+  DIDR0 = 0x01; // turn off the digital input for adc0
+  TIMSK0 = 0; // turn off timer0 for lower jitter
+  
 
 } // setup()
 
@@ -97,18 +108,40 @@ void get_sound() {                                            // Uses high speed
 } // get_sound()
 
 
+//bin and threshold tuning
+  #define redCh 2
+  #define grnCh 21
+  #define bluCh 22
+  #define thresh 100
 
 void fhtDisplay() {
-  #define hueinc 0                                            // A hue increment value to make it rotate a bit.
-  #define micmult 10                                          // Bin values are very low, to let's crank 'em up.
-  #define noiseval 32                                         // Increase this to reduce sensitivity.
 //  int N = sizeof fht_log_out;
-  for (int i = 0; i < sizeof fht_log_out; i++) {
+  for (int i = 0; i < sizeof fht_log_out/2; i++) { //max 256
   Serial.print(fht_log_out[i]);
 //  Serial.print(fht_lin_out[i]);
   Serial.print(" ");
+  
+  
   }
-  Serial.println("");
+  Serial.println("");  
+  
+  //set to 0 if below threshold
+  if (fht_log_out[redCh] < thresh) { fht_log_out[redCh] = 0; }
+  if (fht_log_out[bluCh] < thresh) { fht_log_out[bluCh] = 0; }
+  if (fht_log_out[grnCh] < thresh) { fht_log_out[grnCh] = 0; }
+  //write PWM red
+  analogWrite(RED, fht_log_out[redCh]);
+  //write PWM green
+  analogWrite(GRN, 255-fht_log_out[grnCh]*2);
+  //write PWM blue
+  analogWrite(BLU, 255-fht_log_out[bluCh]*2);
+
+//  Serial.print(fht_log_out[redCh]);
+//  Serial.print(" ");
+//  Serial.print(fht_log_out[grnCh]);
+//  Serial.print(" ");
+//  Serial.println(fht_log_out[bluCh]);
+  
 } // fhtDisplay()
 
 
