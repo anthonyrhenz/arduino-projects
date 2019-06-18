@@ -131,6 +131,9 @@ void fhtDisplay() {
   if (fht_log_out[grnCh] < thresh) { fht_log_out[grnCh] = 0; }
   //write PWM red
   analogWrite(RED, fht_log_out[redCh]);
+  analogWrite(RED, 0);
+  analogWrite(BLU, 0);
+  analogWrite(GRN, 0);
   //write PWM green
   analogWrite(GRN, 255-fht_log_out[grnCh]*2);
   //write PWM blue
